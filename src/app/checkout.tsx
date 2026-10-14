@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { Stack, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    BackHandler,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { useCart } from '../hooks/useCart';
 
@@ -16,30 +17,66 @@ export default function CheckoutScreen() {
     const router = useRouter();
     const { totalPrice, totalItems, clearCart } = useCart();
 
-    // Estados locales para el formulario simulado
     const [name, setName] = useState('Juan Pérez');
     const [cardNumber, setCardNumber] = useState('•••• •••• •••• 4242');
     const [expiry, setExpiry] = useState('12/28');
     const [cvc, setCvc] = useState('123');
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+    const [paidTotal, setPaidTotal] = useState(0);
+    const [paidItemsCount, setPaidItemsCount] = useState(0);
     const [orderNumber] = useState(() => Math.floor(100000 + Math.random() * 900000));
 
     const handleProcessPayment = () => {
         setIsProcessing(true);
 
-        // Simula una latencia de red de 1 segundo para la pasarela mock
+        // Guardamos los totales antes de vaciar el store para mostrarlos en el recibo
+        setPaidTotal(totalPrice);
+        setPaidItemsCount(totalItems);
+
         setTimeout(() => {
-            clearCart(); // Vacía el carrito por completo (Requisito 3.5)
+            clearCart(); // Vacía el carrito global (Requisito 3.5)
             setIsProcessing(false);
             setIsSuccess(true);
         }, 1000);
+    };
+
+    // Intercepta el gesto intuitivo de regresar en Android cuando el pago fue exitoso
+    useEffect(() => {
+        if (!isSuccess) return;
+
+        const onBackPress = () => {
+            handleReturnToCatalog(); // Lo envía directo al catálogo
+            return true; // Previene volver a la pantalla del carrito
+        };
+
+        const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+
+        return () => backHandler.remove();
+    }, [isSuccess]);
+
+    const handleReturnToCatalog = () => {
+        // Vacía toda la pila de navegación y regresa directamente al catálogo raíz
+        if (router.canDismiss()) {
+            router.dismissAll();
+        } else {
+            router.replace('/');
+        }
     };
 
     // Estado de éxito tras el pago
     if (isSuccess) {
         return (
             <View style={styles.successContainer}>
+                {/* Oculta la flecha atrás y deshabilita gestos en iOS */}
+                <Stack.Screen
+                    options={{
+                        headerBackVisible: false,
+                        gestureEnabled: false,
+                        headerTitle: 'Confirmación',
+                    }}
+                />
+
                 <View style={styles.successIconCircle}>
                     <Ionicons name="checkmark-circle" size={80} color="#10B981" />
                 </View>
@@ -56,18 +93,17 @@ export default function CheckoutScreen() {
                     </View>
                     <View style={styles.receiptRow}>
                         <Text style={styles.receiptLabel}>Total pagado:</Text>
-                        <Text style={styles.receiptValue}>${totalPrice.toFixed(2)}</Text>
+                        <Text style={styles.receiptValue}>${paidTotal.toFixed(2)}</Text>
                     </View>
                     <View style={styles.receiptRow}>
                         <Text style={styles.receiptLabel}>Artículos:</Text>
-                        <Text style={styles.receiptValue}>{totalItems} unidades</Text>
+                        <Text style={styles.receiptValue}>{paidItemsCount} unidades</Text>
                     </View>
                 </View>
 
-                {/* router.replace impide regresar a este checkout procesado con el botón 'Atrás' */}
                 <TouchableOpacity
                     style={styles.homeButton}
-                    onPress={() => router.replace('/')}
+                    onPress={handleReturnToCatalog}
                     activeOpacity={0.8}
                 >
                     <Text style={styles.homeButtonText}>Volver al catálogo</Text>
